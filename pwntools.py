@@ -129,9 +129,9 @@ def ret2libc(addr: int, func: str, binary=None) -> tuple:
         if not binary
         else next(libc.search(b"/bin/sh\x00"))
     )
-    leak("libc_base", libc.address)
-    leak("system", system)
-    leak("binsh", binsh)
+    info("libc_base", libc.address)
+    info("system", system)
+    info("binsh", binsh)
     return (system, binsh)
 
 
@@ -262,10 +262,16 @@ def open_dbg() -> None:
     pwnio.debug = True
 
 
-leak = lambda da1, da2=None: info(da1, da2)
-"""
-打印某个泄露出来的地址
-"""
+def leak(address, name="leak_addr"):
+    """
+    打印某个泄露出来的地址
+    """
+    if type(address) != int:
+        log.info("\033[31m Can not understand it! \033[0m")
+        return 0
+    info(name, address)
+    return address
+
 
 s = lambda data: pwnio.io.send(data)
 """
