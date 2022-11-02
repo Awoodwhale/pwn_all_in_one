@@ -70,9 +70,9 @@ def init(path: str = "", ip: str = "", port: int = 0, start_args: list = []) -> 
 
     if arglen > 1:
         ip, port = (
-            sys.argv[1].split(":")[0],
-            sys.argv[1].split(":")[1] if arglen == 2 else sys.argv[1],
-            sys.argv[2],
+            (sys.argv[1].split(":")[0], sys.argv[1].split(":")[1])
+            if arglen == 2
+            else (sys.argv[1], sys.argv[2])
         )
 
     if not path:
