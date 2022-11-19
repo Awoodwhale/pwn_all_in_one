@@ -34,8 +34,7 @@ class Environ(OrderedDict):
         self.ip = ""
         self.port = 0
         self.debug = True
-        self.show_warning = False
-        self.timeout = 5
+        self.timeout = 5    # 默认超时时间为5s
         self.terminal_args = [
             "cmd.exe",
             "/c",
@@ -45,11 +44,12 @@ class Environ(OrderedDict):
             "/c",
             "wsl.exe",
             "-e",
-        ]
+        ]   # 默认使用win10下wsl2的debug方式
         self.filepath = ""
         self.start_args = []  # 启动process启动参数
 
 
+warnings.filterwarnings('ignore', '.*Text is not bytes*', )
 arglen = len(sys.argv)
 pwnio = Environ()
 
@@ -80,9 +80,6 @@ def init(path: str = "", ip: str = "", port: int = 0, start_args: list = []) -> 
 
     if not path:
         raise ValueError("Choose your elf file path")
-
-    if not pwnio.show_warning:
-        warnings.filterwarnings("ignore")
 
     pwnio.elf = ELF(path)
     pwnio.filepath = pwnio.elf.path
@@ -342,12 +339,20 @@ uu64 = lambda data: u64(data.ljust(8, b"\x00"))
 转化64位的数据
 """
 
-i16 = lambda data: int(data, 16)
+i16 = (
+    lambda data: int(data, 16)
+    if isinstance(data, str)
+    else (int(data.decode(), 16) if isinstance(data, bytes) else 0)
+)
 """
 字符串转为16进制
 """
 
-i10 = lambda data: int(data, 10)
+i10 = (
+    lambda data: int(data, 10)
+    if isinstance(data, str)
+    else (int(data.decode(), 10) if isinstance(data, bytes) else 0)
+)
 """
 转为10进制
 """
@@ -429,26 +434,28 @@ list_equally_split = lambda list_data, num: [
     num: 每个列表的长度
 """
 
+try:
+    class timeout:
+        """一个自定义执行时间的class, 超时就raise一个错误
+        使用方法 with timeout(seconds=114514): print(114514)
+        """
 
-class timeout:
-    """一个自定义执行时间的class, 超时就raise一个错误
-    使用方法 with timeout(seconds=114514): print(114514)
-    """
+        def __init__(self, seconds=5, error_message="Timeout"):
+            self.seconds = seconds
+            self.error_message = error_message
 
-    def __init__(self, seconds=5, error_message="Timeout"):
-        self.seconds = seconds
-        self.error_message = error_message
-
-    @staticmethod
-    def handle_timeout(signum, frame):
-        raise
-
-    def __enter__(self):
-        try:
-            signal.signal(signal.SIGALRM, self.handle_timeout)
-            signal.alarm(self.seconds)
-        except:
+        @staticmethod
+        def handle_timeout(signum, frame):
             raise
 
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)
+        def __enter__(self):
+            try:
+                signal.signal(signal.SIGALRM, self.handle_timeout)
+                signal.alarm(self.seconds)
+            except:
+                raise
+
+        def __exit__(self, type, value, traceback):
+            signal.alarm(0)
+except:
+    pass
