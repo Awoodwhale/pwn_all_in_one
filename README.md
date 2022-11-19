@@ -85,7 +85,7 @@ ia()    # 交互
   - 目前调用pwnio对象的属性可以通过`.`的方式调用，也可以使用`[]`的方式调用
   - 新添加一个均分列表的方法
 - 2022.11.19
-  - 新增`libcpatcher.py`文件，用于一键修改elf文件的libc
+  - 新增`libcpatcher.py`文件，基于patchelf来一键修改elf文件的libc
   - 新增了leak函数，使用leak获取地址的同时在控制台打印泄露的地址
   - 更新了i16和i10函数，可以传入bytes或者str类型
   - 修改默认开启过滤 `Text is not bytes` 的警告
