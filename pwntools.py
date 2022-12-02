@@ -83,7 +83,10 @@ def init(path: str = "", ip: str = "", port: int = 0, start_args: list = []) -> 
 
     pwnio.elf = ELF(path)
     pwnio.filepath = pwnio.elf.path
-    pwnio.libc = pwnio.elf.libc  # 如果是静态编译, libc就是 None
+    try:
+        pwnio.libc = pwnio.elf.libc  # 如果是静态编译, libc就是 None
+    except:
+        pwnio.libc = None
 
     if not pwnio.libc:
         info("Static ELF has no libc")
